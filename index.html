@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A Small Sailing Game</title>
+<style>
+body {
+    margin: 0;
+    background: #0d1b2a;
+    color: #fff;
+    font-family: monospace;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+/* Scaling wrapper: an outer box we size to the scaled dimensions,
+   and an inner fixed-800x600 stage we scale from its top-left corner. */
+#stage-outer {
+    position: relative;
+    margin: 0 auto;
+    overflow: hidden;
+    /* width & height set by JS to the SCALED size */
+}
+#stage {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 800px;
+    height: 640px;
+    transform-origin: top left;
+}
+#map {
+    position: relative;
+    width: 800px;
+    height: 600px;
+    background: #3a86c8;
+    margin: auto;
+    border: 4px solid #fff;
+    overflow: hidden;
+}
+/* On-screen D-pad for touch devices */
+#dpad {
+    display: none; /* shown only on touch devices via JS */
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    grid-template-columns: 56px 56px 56px;
+    grid-template-rows: 56px 56px;
+    gap: 8px;
+    touch-action: none;
+}
+#dpad .pad {
+    width: 56px;
+    height: 56px;
+    background: rgba(230, 57, 70, 0.85);
+    border: 2px solid #fff;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 22px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    -webkit-user-select: none;
+    box-shadow: 2px 2px 0 #000;
+}
+#dpad .pad:active { background: #e63946; transform: translate(1px,1px); }
+#pad-up    { grid-column: 2; grid-row: 1; }
+#pad-left  { grid-column: 1; grid-row: 2; }
+#pad-down  { grid-column: 2; grid-row: 2; }
+#pad-right { grid-column: 3; grid-row: 2; }
+/* Efecto de temblor de pantalla (Screenshake) */
+.shake {
+    animation: shakeAnim 0.15s ease-in-out;
+}
+@keyframes shakeAnim {
+    0% { transform: translate(0, 0); }
+    20% { transform: translate(-4px, 3px); }
+    40% { transform: translate(4px, -3px); }
+    60% { transform: translate(-3px, -2px); }
+    80% { transform: translate(3px, 2px); }
+    100% { transform: translate(0, 0); }
+}
+.box {
+    position: absolute;
+    top: 5%;
+    left: 10%;
+    width: 80%;
+    max-height: 85%;
+    background: #1b263b;
+    border: 4px solid #fff;
+    padding: 25px;
+    z-index: 10;
+    display: block;
+    line-height: 1.6;
+    font-size: 13px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+.btn {
+    background: #e63946;
+    color: #fff;
+    padding: 12px 24px;
+    cursor: pointer;
+    border: 2px solid #fff;
+    display: inline-block;
+    margin: 5px;
+    text-transform: uppercase;
+    font-weight: bold;
+    text-decoration: none;
+    box-shadow: 3px 3px 0px #000;
+}
+.btn:hover {
+    background: #a8222e;
+    transform: translate(1px, 1px);
+    box-shadow: 2px 2px 0px #000;
+}
+.links-container {
+    margin-top: 20px;
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+#boat {
+    position: absolute;
+    width: 18px;
+    height: 28px;
+    background: #fff;
+    border-radius: 50% 50% 0 0;
+    z-index: 6;
+    border: 2px solid #1d3557;
+    transition: transform 0.1s ease-out;
+}
+/* Vela roja del barco */
+#boat::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: 0;
+    height: 0;
+    border-left: 6px solid #e63946;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+}
+#portal {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    border: 3px dashed #e63946;
+    border-radius: 50%;
+    text-align: center;
+    font-size: 10px;
+    font-weight: bold;
+    line-height: 74px;
+    color: #fff;
+    z-index: 5;
+    background: rgba(230, 57, 70, 0.1);
+}
+.rock {
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    background: #4a5759;
+    border-radius: 50%;
+    border: 3px solid #253237;
+    z-index: 4;
+}
+.wave {
+    position: absolute;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    z-index: 1;
+}
+.firework {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    z-index: 2;
+}
+.fw-red { background: #e63946; box-shadow: 0 0 6px #e63946; }
+.fw-cyan { background: #a8dadc; box-shadow: 0 0 6px #a8dadc; }
+.fw-yellow { background: #ffb703; box-shadow: 0 0 6px #ffb703; }
+
+/* Simple instructions line under the map */
+#hint {
+    text-align: center;
+    font-family: monospace;
+    font-size: 12px;
+    color: #a8dadc;
+    margin: 12px auto 0;
+    width: 800px;
+    max-width: 100%;
+}
+</style>
+</head>
+<body>
+
+<div id="stage-outer">
+<div id="stage">
+<div id="map">
+    <div id="box" class="box">
+        <p id="txt">A SMALL SAILING GAME<br><br>Three short stops. No score, no winning. A few things the sea taught me.</p>
+        <div id="btn" class="btn" onclick="go()">CAST OFF</div>
+    </div>
+    <div id="boat"></div>
+    <div id="portal"></div>
+    <!-- Islas de Rocas distribuidas por el oceano -->
+    <div class="rock" style="left:350px;top:220px;"></div>
+    <div class="rock" style="left:520px;top:380px;"></div>
+    <div class="rock" style="left:200px;top:100px;"></div>
+    <div class="rock" style="left:600px;top:500px;"></div>
+    <div class="rock" style="left:120px;top:280px;"></div>
+    <!-- Capa para las olas retro animadas -->
+    <div id="wave-layer"></div>
+</div>
+<div id="hint">Sail to the red circle — arrow keys, W A S D, or the buttons below.</div>
+</div>
+</div>
+
+<!-- On-screen controls for touch devices -->
+<div id="dpad">
+    <div class="pad" id="pad-up">▲</div>
+    <div class="pad" id="pad-left">◀</div>
+    <div class="pad" id="pad-down">▼</div>
+    <div class="pad" id="pad-right">▶</div>
+</div>
+
+<script>
+let b = document.getElementById('boat');
+let p = document.getElementById('portal');
+let wl = document.getElementById('wave-layer');
+let m = document.getElementById('map');
+let x = 150, y = 450, px = 650, py = 150, st = 0, keys = {}, waves = [], fireworks = [];
+
+const rockPositions = [
+    {x: 350, y: 220},
+    {x: 520, y: 380},
+    {x: 200, y: 100},
+    {x: 600, y: 500},
+    {x: 120, y: 280}
+];
+
+const txts = [
+`MASTERY
+
+A dinghy. Strange gusts coming from nowhere. You capsize — flip the boat, climb back in with the grace of an elephant. The wind keeps shoving you at the rocks.
+
+You look up. The fancy yachts behind the cargo ship aren't moving either. So it's not just a dinghy thing... The wind's running in corridors between the tall buildings — and poor you, you're in one.
+
+You can't out-sail it. So you surrender: capsize again, on purpose this time, and wait for the zodiac. Warm water, no damage. The right call — not exactly epic.
+
+Read the wind before you fight it.`,
+
+`CONNECTION
+
+A new crew. Tough guys, pirates basically. Your job is the spinnaker: a flying sail, all precision, quick to drop in the water — and you're not flying it well.
+
+Then the light wind does the trick — the crew starts going green, one by one. Even the so-called captain. All defeated, heads over the side.
+
+You're queasy too, but holding. So you call it: you can't fly the spinnaker, but you can make sandwiches. A steadier hand takes the sail.
+
+Best sandwiches ever made. An hour later everyone's fed and cracking jokes.
+
+The least glamorous job on the boat was the one that helped. Usually is.`,
+
+`AUTONOMY
+
+Back on land. This is your element.
+
+You'd been feeding language data into a research project, and it kept underperforming. You looked closer — the datasets were mixing up language variants, quietly muddying everything. Nobody had noticed.
+
+Would a cleaner dataset of your own do better? So you built one — taught yourself the tools as you went (Python, an LLM roped in as a 'judge', a fair bit of begging whatever AI for help).
+
+Half of what you learned was where the judge itself fell apart — the thing meant to catch mistakes turned out to be the shakiest in the room. Fair enough.
+
+Flat calm, not exactly your cup of tea.
+
+That's the part I value: finding the root cause, maybe learning something along the way.`,
+
+`WHY NEX
+
+You're back on shore. Salt on your skin, the day behind you. None of it happened on a screen.
+
+I've worked in games, and I've seen how good they are at holding attention — how much craft goes into keeping people playing.
+
+Nex points that craft the other way: getting kids and adults off the couch, moving, playing together — with safety and healthy play at the core. That's the part I want to work on now.
+
+That's why I'm here.
+
+<div class="links-container">
+    <a href="mailto:marta.mani@gmail.com" target="_top" class="btn">Say Hello</a>
+</div>`,
+
+`<div style="text-align: center; padding: 20px;">
+    <h1 id="end-title" style="font-family: monospace; font-size: 32px; color: #fff; margin-bottom: 20px; transition: transform 0.1s linear;">THE END</h1>
+    <p style="font-size: 16px; color: #a8dadc; margin-bottom: 10px;">Thanks for playing!</p>
+    <p style="font-size: 12px; opacity: 0.8;">Fair winds to you!</p>
+</div>`
+];
+
+const lbls = ["MASTERY", "CONNECTION", "AUTONOMY", "WHY NEX", "THE END", "RESET"];
+const positions = [{x:650,y:150},{x:400,y:100},{x:650,y:400},{x:300,y:300},{x:150,y:200}];
+
+for (let i = 0; i < 25; i++) {
+    let div = document.createElement('div');
+    div.className = 'wave';
+    let wX = Math.random() * 800, wY = Math.random() * 600;
+    let len = 15 + Math.random() * 20, spd = 0.5 + Math.random() * 0.8;
+    div.style.width = len + 'px'; div.style.top = wY + 'px';
+    wl.appendChild(div);
+    waves.push({ el: div, x: wX, y: wY, s: spd });
+}
+
+b.style.left = x + 'px'; b.style.top = y + 'px';
+p.style.left = px + 'px'; p.style.top = py + 'px';
+p.innerText = lbls[0]; // Muestra solo MASTERY al arrancar
+
+let animTimer = 0;
+
+function triggerScreenshake() {
+    m.classList.remove('shake');
+    void m.offsetWidth;
+    m.classList.add('shake');
+}
+
+function launchFirework() {
+    let colors = ['fw-red', 'fw-cyan', 'fw-yellow'];
+    let c = colors[Math.floor(Math.random() * colors.length)];
+    let fX = 100 + Math.random() * 600;
+    let fY = 100 + Math.random() * 300;
+
+    for (let i = 0; i < 15; i++) {
+        let d = document.createElement('div');
+        d.className = 'firework ' + c;
+        d.style.left = fX + 'px'; d.style.top = fY + 'px';
+        m.appendChild(d);
+        let angle = Math.random() * Math.PI * 2;
+        let speed = 1 + Math.random() * 3;
+        fireworks.push({
+            el: d, x: fX, y: fY,
+            vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+            life: 40 + Math.random() * 30
+        });
+    }
+}
+
+function clearFireworks() {
+    fireworks.forEach(f => f.el.remove());
+    fireworks = [];
+}
+
+function go() {
+    document.getElementById('box').style.display = 'none';
+    clearFireworks();
+    st++;
+    if (st > 5) { st = 1; }
+    x = 150; y = 450;
+    b.style.left = x + 'px'; b.style.top = y + 'px';
+    b.style.transform = 'rotate(0deg)';
+    let currentPos = positions[st - 1];
+    px = currentPos.x; py = currentPos.y;
+    p.style.left = px + 'px'; p.style.top = py + 'px';
+    p.innerText = lbls[st - 1];
+}
+
+window.onkeydown = e => keys[e.key] = 1;
+window.onkeyup = e => keys[e.key] = 0;
+
+// ===== On-screen D-pad (touch) =====
+// Map each pad to the same keys the keyboard sets.
+const padMap = {
+    'pad-up':    'ArrowUp',
+    'pad-down':  'ArrowDown',
+    'pad-left':  'ArrowLeft',
+    'pad-right': 'ArrowRight'
+};
+Object.keys(padMap).forEach(id => {
+    const el = document.getElementById(id);
+    const key = padMap[id];
+    const press = e => { e.preventDefault(); keys[key] = 1; };
+    const release = e => { e.preventDefault(); keys[key] = 0; };
+    // touch
+    el.addEventListener('touchstart', press, {passive:false});
+    el.addEventListener('touchend', release, {passive:false});
+    el.addEventListener('touchcancel', release, {passive:false});
+    // mouse (so it also works if someone clicks the buttons on desktop)
+    el.addEventListener('mousedown', press);
+    el.addEventListener('mouseup', release);
+    el.addEventListener('mouseleave', release);
+});
+
+// Show the D-pad only on touch-capable devices.
+if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+    document.getElementById('dpad').style.display = 'grid';
+}
+
+// ===== Responsive scaling =====
+// The game is authored at 800x600. Scale the whole stage to fit the
+// viewport (with a little margin) so it works on phones and small windows.
+function fitStage() {
+    const stage = document.getElementById('stage');
+    const outer = document.getElementById('stage-outer');
+    const gameW = 800, gameH = 640; // 600 map + hint line
+    const marginX = 12;
+    const reserveBottom = (document.getElementById('dpad').style.display === 'grid') ? 170 : 40;
+    const availW = window.innerWidth - marginX;
+    const availH = window.innerHeight - reserveBottom;
+    let scale = Math.min(availW / gameW, availH / gameH, 1);
+    stage.style.transform = 'scale(' + scale + ')';
+    // Outer wrapper takes the SCALED dimensions; margin:auto centers it,
+    // and the absolutely-positioned scaled stage fills it exactly.
+    outer.style.width = (gameW * scale) + 'px';
+    outer.style.height = (gameH * scale) + 'px';
+}
+window.addEventListener('resize', fitStage);
+fitStage();
+
+setInterval(() => {
+    waves.forEach(w => {
+        w.x -= w.s;
+        if (w.x < -40) { w.x = 820; }
+        w.el.style.left = w.x + 'px';
+    });
+
+    if (document.getElementById('box').style.display === 'block' && st === 5) {
+        animTimer += 0.05;
+        let offset = Math.sin(animTimer) * 8;
+        let titleEl = document.getElementById('end-title');
+        if (titleEl) titleEl.style.transform = `translateY(${offset}px)`;
+        if (Math.random() < 0.04) launchFirework();
+    }
+
+    fireworks.forEach((f, idx) => {
+        f.x += f.vx; f.y += f.vy; f.vy += 0.04; f.life--;
+        f.el.style.left = f.x + 'px'; f.el.style.top = f.y + 'px';
+        f.el.style.opacity = f.life / 70;
+        if (f.life <= 0) { f.el.remove(); fireworks.splice(idx, 1); }
+    });
+
+    if (document.getElementById('box').style.display === 'block') return;
+
+    let moveX = 0, moveY = 0;
+    if (keys.ArrowUp || keys.w) moveY = -4;
+    if (keys.ArrowDown || keys.s) moveY = 4;
+    if (keys.ArrowLeft || keys.a) moveX = -4;
+    if (keys.ArrowRight || keys.d) moveX = 4;
+
+    if (moveX !== 0 || moveY !== 0) {
+        x += moveX; y += moveY;
+        let angleRad = Math.atan2(moveY, moveX);
+        let angleDeg = angleRad * (180 / Math.PI) + 90;
+        b.style.transform = `rotate(${angleDeg}deg)`;
+    }
+
+    x = Math.max(0, Math.min(780, x));
+    y = Math.max(0, Math.min(570, y));
+    b.style.left = x + 'px'; b.style.top = y + 'px';
+
+    rockPositions.forEach(r => {
+        let dx = (x + 9) - (r.x + 25);
+        let dy = (y + 14) - (r.y + 25);
+        let distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < 34) {
+            triggerScreenshake();
+            x -= moveX * 2; y -= moveY * 2;
+        }
+    });
+
+    if (Math.abs(x - px) < 40 && Math.abs(y - py) < 40) {
+        document.getElementById('box').style.display = 'block';
+
+        if (st >= 4) {
+            document.getElementById('txt').innerHTML = txts[st - 1].replace('WHY NEX', 'WHY NEX<br><br>');
+        } else {
+            document.getElementById('txt').innerText = txts[st - 1];
+        }
+        document.getElementById('btn').innerText = st >= 5 ? "PLAY AGAIN" : "SAIL ON";
+    }
+}, 20);
+</script>
+
+</body>
+</html>
